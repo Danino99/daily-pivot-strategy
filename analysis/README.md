@@ -1,9 +1,10 @@
 # Analysis
 
-Two small scripts reproduce the clean dataset and the exploratory scan behind the
-dashboard. The statistical workflow here (pandas, inference, hypothesis tests,
-FDR) is the one I've been learning in the Tecnicatura en Gestión y Análisis de
-Datos (FCE, UBA); see the repository README for the course context.
+Three small scripts reproduce the clean dataset, the exploratory scan and the
+predictive model behind the dashboard. The statistical workflow here (pandas,
+inference, hypothesis tests, FDR, logistic regression) is the one I've been
+learning in the Tecnicatura en Gestión y Análisis de Datos (FCE, UBA); see the
+repository README for the course context.
 
 ## What each script does
 
@@ -14,15 +15,19 @@ Datos (FCE, UBA); see the repository README for the course context.
   flags.
 - `edge_scan.py` — runs on the public CSV and reports win-rate subgroups with
   false-positive control. It writes `public_edge_report.md`.
+- `predict_win.py` — fits a logistic regression for P(win), with cross-validation
+  and a chronological holdout. It writes `data/model_metrics.json` (used by the
+  dashboard) and `model_report.md`.
 
 ## Run
 
 ```bash
-python -m pip install pandas scipy statsmodels
+python -m pip install pandas scipy statsmodels scikit-learn
 
 # Point at the folder that holds the private workbooks:
 TRADING_SOURCE_DIR=/path/to/workbooks python analysis/build_dataset.py
 python analysis/edge_scan.py
+python analysis/predict_win.py
 ```
 
 The workbooks are not distributed with this repository.
@@ -43,6 +48,18 @@ For every subgroup cell the scan reports:
 
 Dimensions: `asset`, `weekday`, `session` (derived from the entry hour),
 `volume`, `pattern`, a stop-size quartile, plus a few pairs.
+
+## Predictive model
+
+`predict_win.py` fits a logistic regression for P(win) from one-hot encoded
+categorical features (asset, weekday, session, volume, pattern) plus the
+standardized stop size. It reports 5-fold stratified cross-validation AUC and
+accuracy, a chronological holdout (train 2023, test 2024), and the largest odds
+ratios. A single-feature (pattern-only) model is included for comparison.
+
+Result: the model barely beats a coin toss (CV AUC ≈ 0.52; pattern-only ≈ 0.55;
+holdout ≈ 0.53), so the features do not form a reliable predictor on this small,
+hand-labelled sample. I report it as-is instead of tuning it to look better.
 
 ## Important limitation
 

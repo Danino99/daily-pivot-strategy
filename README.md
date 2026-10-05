@@ -138,6 +138,23 @@ My own read after watching the indicator over these years:
 
 These are my observations from replay, not measured conclusions.
 
+## Predictive model
+
+I also fit a logistic regression that estimates P(win) from the setup features
+(asset, weekday, session, volume, candle pattern, stop size), with 5-fold
+cross-validation and a chronological holdout (train on 2023, test on 2024):
+
+- 5-fold CV AUC ≈ **0.52**; a model using only the candle pattern ≈ **0.55**;
+  the 2024 holdout AUC ≈ **0.53**.
+- That is barely better than a coin toss, and the multivariate model does not beat
+  the pattern-only one. In plain terms, the setup features have little predictive
+  power once combined, on this small, hand-labelled sample.
+
+I report it as-is: the point was to test the features honestly, and the honest
+answer is that they do not form a reliable predictive model here. See
+[`analysis/model_report.md`](analysis/model_report.md) and the model panel in the
+[dashboard](dashboard/).
+
 ## Limitations
 
 - The outcomes are manual chart-replay labels, not live execution.

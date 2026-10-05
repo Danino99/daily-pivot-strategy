@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-10-05",
+  "model": "logistic regression",
+  "n": 2368,
+  "base_rate": 0.5916,
+  "baseline_accuracy": 0.5916,
+  "cv_folds": 5,
+  "cv_auc_mean": 0.5234,
+  "cv_auc_std": 0.0158,
+  "cv_accuracy_mean": 0.5811,
+  "pattern_only_cv_auc_mean": 0.5514,
+  "holdout": "trained on 2023, tested on 2024",
+  "holdout_auc": 0.5339,
+  "holdout_accuracy": 0.582,
+  "holdout_baseline_accuracy": 0.5837,
+  "features": [
+    "asset",
+    "weekday",
+    "session",
+    "volume",
+    "pattern",
+    "sl_pct"
+  ],
+  "top_features": [
+    {
+      "feature": "pattern_Both",
+      "odds_ratio": 3.891,
+      "coef": 1.359
+    },
+    {
+      "feature": "pattern_None",
+      "odds_ratio": 0.426,
+      "coef": -0.854
+    },
+    {
+      "feature": "pattern_Pinbar",
+      "odds_ratio": 0.519,
+      "coef": -0.656
+    },
+    {
+      "feature": "pattern_Engulfing",
+      "odds_ratio": 1.163,
+      "coef": 0.151
+    },
+    {
+      "feature": "volume_Flat",
+      "odds_ratio": 0.86,
+      "coef": -0.151
+    },
+    {
+      "feature": "session_00-06_asia",
+      "odds_ratio": 0.875,
+      "coef": -0.134
+    },
+    {
+      "feature": "asset_USDCHF",
+      "odds_ratio": 1.135,
+      "coef": 0.127
+    },
+    {
+      "feature": "asset_EURUSD",
+      "odds_ratio": 0.888,
+      "coef": -0.118
+    }
+  ]
+}

@@ -167,13 +167,18 @@
       <h2>Groups</h2>
       <div id="table-wrap"></div>
     </section>
+    <section>
+      <h2>Predictive model</h2>
+      <div id="model"></div>
+    </section>
   </main>
 </div>
 
 <footer>
   Data: <code>data/signals-2023-2024.csv</code> · Indicator-generated signals only (manual entries
   excluded). Extracted with <code>analysis/build_dataset.py</code>, scanned with
-  <code>analysis/edge_scan.py</code>. Engulfing definition in <code>docs/engulfing-rule.md</code>.
+  <code>analysis/edge_scan.py</code>, model with <code>analysis/predict_win.py</code>. Engulfing
+  definition in <code>docs/engulfing-rule.md</code>.
 </footer>
 
 <script>
@@ -337,6 +342,39 @@ function render() {
   renderTable(groups);
 }
 
+function renderModel(m) {
+  const feats = m.top_features.slice(0, 6).map((f) => {
+    const cls = f.odds_ratio >= 1 ? "pos" : "neg";
+    const width = Math.min(100, Math.abs(Math.log(f.odds_ratio)) * 120);
+    return `<div class="chartrow"><div class="name">${f.feature}</div>
+      <div class="bar"><div class="fill" style="width:${width}%"></div></div>
+      <div class="n">OR</div><div class="val ${cls}">${f.odds_ratio.toFixed(2)}</div></div>`;
+  }).join("");
+  document.getElementById("model").innerHTML = `
+    <div class="cards" style="margin-bottom:14px">
+      <div class="card"><div class="label">Model</div><div class="value" style="font-size:15px">${m.model}</div><div class="hint">${m.n} signals · base ${(m.base_rate * 100).toFixed(1)}%</div></div>
+      <div class="card"><div class="label">CV AUC (5-fold)</div><div class="value">${m.cv_auc_mean.toFixed(3)}</div><div class="hint">± ${m.cv_auc_std.toFixed(3)}</div></div>
+      <div class="card"><div class="label">Pattern-only AUC</div><div class="value">${m.pattern_only_cv_auc_mean.toFixed(3)}</div><div class="hint">single feature</div></div>
+      <div class="card"><div class="label">Holdout AUC</div><div class="value">${m.holdout_auc.toFixed(3)}</div><div class="hint">${m.holdout}</div></div>
+    </div>
+    <p class="muted" style="font-size:12.5px;max-width:780px;line-height:1.5">
+      A logistic regression on these features barely beats a coin toss (AUC ≈ 0.5), and a
+      pattern-only model is close: the setup features have little multivariate predictive
+      power on this small, hand-labelled sample. Odds ratios (&gt;1 favors a win) below.
+    </p>
+    ${feats}`;
+}
+
+async function loadModel() {
+  try {
+    const metrics = await fetch("../data/model_metrics.json").then((r) => r.json());
+    renderModel(metrics);
+  } catch (err) {
+    document.getElementById("model").innerHTML =
+      '<div class="empty">Model metrics unavailable.</div>';
+  }
+}
+
 function reset() {
   ["f-asset", "f-weekday", "f-session", "f-volume", "f-pattern"].forEach((id) => {
     document.querySelectorAll("#" + id + " .chip").forEach((c) => c.classList.add("on"));
@@ -406,6 +444,7 @@ async function init() {
   document.getElementById("reset").addEventListener("click", reset);
 
   render();
+  loadModel();
 }
 
 init().catch((err) => {
