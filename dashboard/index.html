@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Daily Pivot — Signal Explorer</title>
+<style>
+  :root {
+    --bg: #11151c;
+    --panel: #171d26;
+    --panel-2: #1e2632;
+    --line: #2b3543;
+    --text: #e7edf5;
+    --muted: #8a97a8;
+    --accent: #4fd1c5;
+    --win: #4ade80;
+    --lose: #f87171;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  header {
+    padding: 22px 26px 18px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #141a22, #11151c);
+  }
+  header h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: .2px; }
+  header .sub { color: var(--muted); font-size: 13px; max-width: 900px; }
+  header .warn {
+    display: inline-block; margin-top: 10px; padding: 5px 10px;
+    border: 1px solid #5a3a1a; background: #2a1f12; color: #f0b060;
+    border-radius: 999px; font-size: 12px;
+  }
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 0; min-height: calc(100vh - 96px); }
+  aside {
+    border-right: 1px solid var(--line);
+    padding: 18px;
+    background: var(--panel);
+    overflow-y: auto;
+    max-height: calc(100vh - 96px);
+    position: sticky; top: 0;
+  }
+  main { padding: 18px 22px 60px; overflow-x: hidden; }
+  .group-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
+    color: var(--muted); margin: 16px 0 8px;
+  }
+  .group-title:first-child { margin-top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--muted); padding: 4px 9px; border-radius: 999px;
+    cursor: pointer; font-size: 12px; user-select: none;
+  }
+  .chip.on { border-color: var(--accent); color: var(--text); background: #14312f; }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .chip.on .dot { background: var(--accent); }
+  .range-row { margin: 10px 0 2px; }
+  .range-row label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  select, input[type="number"] {
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 13px;
+  }
+  button.reset {
+    margin-top: 16px; width: 100%; padding: 8px; border-radius: 8px;
+    background: transparent; border: 1px solid var(--line); color: var(--muted); cursor: pointer;
+  }
+  button.reset:hover { color: var(--text); border-color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 12px 14px;
+  }
+  .card .label { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .card .value { font-size: 24px; font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .card .hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .pos { color: var(--win); } .neg { color: var(--lose); }
+  section { margin-bottom: 26px; }
+  section h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; }
+  .chartrow { display: flex; align-items: center; gap: 10px; margin: 5px 0; font-size: 12px; }
+  .chartrow .name { width: 190px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chartrow .bar { flex: 1; height: 16px; background: var(--panel-2); border-radius: 4px; overflow: hidden; position: relative; }
+  .chartrow .fill { height: 100%; background: linear-gradient(90deg, #2b6f6a, var(--accent)); }
+  .chartrow .val { width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+  .chartrow .n { width: 70px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: right; padding: 7px 9px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  tbody tr:hover { background: var(--panel); }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+  footer { padding: 16px 26px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+    .chartrow .name { width: 120px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Daily Pivot — Signal Explorer</h1>
+  <div class="sub">
+    Interactive view of my indicator-generated signals (2023–2024, seven FX pairs), with manual
+    entries excluded. Filter by asset, weekday, session, hour, volume and candle pattern to see
+    sample size, win rate and expectancy. This is exploratory research, <strong>not</strong> a
+    validated strategy or financial advice.
+  </div>
+  <span class="warn">Manual chart-replay data · not broker fills · no costs or slippage</span>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="group-title">Asset</div><div class="chips" id="f-asset"></div>
+    <div class="group-title">Weekday</div><div class="chips" id="f-weekday"></div>
+    <div class="group-title">Session (from entry hour)</div><div class="chips" id="f-session"></div>
+    <div class="group-title">Volume</div><div class="chips" id="f-volume"></div>
+    <div class="group-title">Candle pattern</div><div class="chips" id="f-pattern"></div>
+
+    <div class="group-title">Entry hour</div>
+    <div class="range-row">
+      <label><span>From</span><span id="hour-min-lbl">0</span></label>
+      <input type="range" id="hour-min" min="0" max="23" value="0" />
+      <label><span>To</span><span id="hour-max-lbl">23</span></label>
+      <input type="range" id="hour-max" min="0" max="23" value="23" />
+    </div>
+
+    <div class="group-title">Stop size (SL %)</div>
+    <div class="range-row">
+      <label><span>Min</span><span id="sl-min-lbl">0</span></label>
+      <input type="range" id="sl-min" min="0" max="100" value="0" />
+      <label><span>Max</span><span id="sl-max-lbl">100</span></label>
+      <input type="range" id="sl-max" min="0" max="100" value="100" />
+    </div>
+
+    <div class="group-title">Group chart by</div>
+    <select id="groupby">
+      <option value="session">Session</option>
+      <option value="asset">Asset</option>
+      <option value="pattern">Candle pattern</option>
+      <option value="volume">Volume</option>
+      <option value="weekday">Weekday</option>
+      <option value="hour">Entry hour</option>
+    </select>
+    <div class="group-title">Minimum sample (chart)</div>
+    <input type="number" id="minn" value="20" min="1" step="1" />
+
+    <button class="reset" id="reset">Reset filters</button>
+  </aside>
+
+  <main>
+    <div class="cards" id="cards"></div>
+    <section>
+      <h2 id="chart-title">Win rate by session</h2>
+      <div id="chart"></div>
+    </section>
+    <section>
+      <h2>Groups</h2>
+      <div id="table-wrap"></div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  Data: <code>data/signals-2023-2024.csv</code> · Indicator-generated signals only (manual entries
+  excluded). Extracted with <code>analysis/build_dataset.py</code>, scanned with
+  <code>analysis/edge_scan.py</code>. Engulfing definition in <code>docs/engulfing-rule.md</code>.
+</footer>
+
+<script>
+const DATA_URL = "../data/signals-2023-2024.csv";
+const SESSION_ORDER = ["00-06_asia", "07-11_london", "12-16_ny_am", "17-23_ny_pm"];
+const WEEKDAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+let rows = [];
+let filters = {};
+
+function sessionOf(hour) {
+  if (hour <= 6) return "00-06_asia";
+  if (hour <= 11) return "07-11_london";
+  if (hour <= 16) return "12-16_ny_am";
+  return "17-23_ny_pm";
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines[0].split(",");
+  return lines.slice(1).map((line) => {
+    const parts = line.split(",");
+    const row = {};
+    header.forEach((key, i) => { row[key] = parts[i]; });
+    row.hour = parseInt(row.hour, 10);
+    row.sl_pct = parseFloat(row.sl_pct);
+    row.session = sessionOf(row.hour);
+    row.win = row.result === "W" ? 1 : 0;
+    return row;
+  });
+}
+
+function wilson(wins, n) {
+  if (!n) return [NaN, NaN];
+  const z = 1.96, p = wins / n;
+  const denom = 1 + (z * z) / n;
+  const center = (p + (z * z) / (2 * n)) / denom;
+  const half = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / denom;
+  return [Math.max(0, (center - half) * 100), Math.min(100, (center + half) * 100)];
+}
+
+function uniq(values) { return [...new Set(values)].sort(); }
+
+function extent(values) {
+  let min = Infinity, max = -Infinity;
+  for (const v of values) {
+    if (Number.isFinite(v)) { if (v < min) min = v; if (v > max) max = v; }
+  }
+  return [Number.isFinite(min) ? min : 0, Number.isFinite(max) ? max : 1];
+}
+
+function fmtPct(x) { return (x * 100).toFixed(1) + "%"; }
+
+function buildChips(containerId, key, values, order) {
+  const container = document.getElementById(containerId);
+  const sorted = order ? order.filter((v) => values.includes(v)) : values;
+  container.innerHTML = "";
+  sorted.forEach((value) => {
+    const el = document.createElement("label");
+    el.className = "chip on";
+    el.innerHTML = `<span class="dot"></span>${value}`;
+    el.dataset.value = value;
+    el.addEventListener("click", () => {
+      el.classList.toggle("on");
+      filters[key] = [...container.querySelectorAll(".chip.on")].map((c) => c.dataset.value);
+      render();
+    });
+    container.appendChild(el);
+  });
+  filters[key] = sorted.slice();
+}
+
+function inFilters(row) {
+  return (
+    filters.asset.includes(row.asset) &&
+    filters.weekday.includes(row.weekday) &&
+    filters.session.includes(row.session) &&
+    filters.volume.includes(row.volume) &&
+    filters.pattern.includes(row.pattern) &&
+    row.hour >= filters.hourMin && row.hour <= filters.hourMax &&
+    (!Number.isFinite(row.sl_pct) ||
+      (row.sl_pct >= filters.slMin && row.sl_pct <= filters.slMax))
+  );
+}
+
+function stats(list) {
+  const n = list.length;
+  const wins = list.reduce((a, r) => a + r.win, 0);
+  const wr = n ? wins / n : 0;
+  const [lo, hi] = wilson(wins, n);
+  const meanR = n ? list.reduce((a, r) => a + (r.win ? 1 : -1), 0) / n : 0;
+  return { n, wins, wr, lo, hi, meanR };
+}
+
+function renderCards(base, filtered) {
+  const s = stats(filtered);
+  const edge = (s.wr - base.wr) * 100;
+  const cls = (x) => (x >= 0 ? "pos" : "neg");
+  document.getElementById("cards").innerHTML = `
+    <div class="card"><div class="label">Signals selected</div><div class="value">${s.n}</div>
+      <div class="hint">of ${base.n} total</div></div>
+    <div class="card"><div class="label">Win rate</div><div class="value">${(s.wr * 100).toFixed(1)}%</div>
+      <div class="hint">95% CI ${s.n ? s.lo.toFixed(1) + "–" + s.hi.toFixed(1) + "%" : "—"}</div></div>
+    <div class="card"><div class="label">Mean R (1:1)</div><div class="value ${cls(s.meanR)}">${s.meanR >= 0 ? "+" : ""}${s.meanR.toFixed(3)}</div>
+      <div class="hint">+1R win / −1R loss, before costs</div></div>
+    <div class="card"><div class="label">Vs. overall baseline</div><div class="value ${cls(edge)}">${edge >= 0 ? "+" : ""}${edge.toFixed(1)} pp</div>
+      <div class="hint">baseline ${(base.wr * 100).toFixed(1)}%</div></div>`;
+}
+
+function groupRows(list, key) {
+  const groups = new Map();
+  list.forEach((r) => {
+    const k = r[key];
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  });
+  return [...groups.entries()].map(([k, v]) => ({ key: k, ...stats(v) }))
+    .sort((a, b) => b.wr - a.wr);
+}
+
+function renderChart(groups) {
+  const minN = Math.max(1, parseInt(document.getElementById("minn").value, 10) || 1);
+  const shown = groups.filter((g) => g.n >= minN);
+  const el = document.getElementById("chart");
+  if (!shown.length) { el.innerHTML = '<div class="empty">No group meets the minimum sample.</div>'; return; }
+  el.innerHTML = shown.map((g) => `
+    <div class="chartrow">
+      <div class="name">${g.key}</div>
+      <div class="bar"><div class="fill" style="width:${g.wr * 100}%"></div></div>
+      <div class="n">n=${g.n}</div>
+      <div class="val">${(g.wr * 100).toFixed(1)}%</div>
+    </div>`).join("");
+}
+
+function renderTable(groups) {
+  const el = document.getElementById("table-wrap");
+  if (!groups.length) { el.innerHTML = '<div class="empty">No data for the current filters.</div>'; return; }
+  const rowsHtml = groups.map((g) => `
+    <tr>
+      <td>${g.key}</td>
+      <td>${g.n}</td>
+      <td>${(g.wr * 100).toFixed(1)}%</td>
+      <td>${g.lo.toFixed(1)}–${g.hi.toFixed(1)}%</td>
+      <td class="${g.meanR >= 0 ? "pos" : "neg"}">${g.meanR >= 0 ? "+" : ""}${g.meanR.toFixed(3)}</td>
+    </tr>`).join("");
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Group</th><th>n</th><th>Win %</th><th>95% CI</th><th>Mean R (1:1)</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+}
+
+function render() {
+  const filtered = rows.filter(inFilters);
+  const base = stats(rows);
+  renderCards(base, filtered);
+  const groupKey = document.getElementById("groupby").value;
+  document.getElementById("chart-title").textContent = "Win rate by " + groupKey;
+  const groups = groupRows(filtered, groupKey);
+  renderChart(groups);
+  renderTable(groups);
+}
+
+function reset() {
+  ["f-asset", "f-weekday", "f-session", "f-volume", "f-pattern"].forEach((id) => {
+    document.querySelectorAll("#" + id + " .chip").forEach((c) => c.classList.add("on"));
+  });
+  ["asset", "weekday", "session", "volume", "pattern"].forEach((k) => {
+    filters[k] = [...document.querySelectorAll(`#f-${k} .chip`)].map((c) => c.dataset.value);
+  });
+  const [slLo, slHi] = extent(rows.map((r) => r.sl_pct));
+  const slMin = Math.floor(slLo * 100);
+  const slMax = Math.ceil(slHi * 100);
+  setRange("hour", 0, 23);
+  setRange("sl", slMin, slMax);
+  render();
+}
+
+function setRange(prefix, min, max) {
+  document.getElementById(prefix + "-min").value = min;
+  document.getElementById(prefix + "-max").value = max;
+  document.getElementById(prefix + "-min-lbl").textContent = prefix === "sl" ? (min / 100).toFixed(2) : min;
+  document.getElementById(prefix + "-max-lbl").textContent = prefix === "sl" ? (max / 100).toFixed(2) : max;
+  if (prefix === "hour") { filters.hourMin = min; filters.hourMax = max; }
+  else { filters.slMin = min / 100; filters.slMax = max / 100; }
+}
+
+function wireRange(prefix, onChange) {
+  const minEl = document.getElementById(prefix + "-min");
+  const maxEl = document.getElementById(prefix + "-max");
+  const apply = () => {
+    let a = parseInt(minEl.value, 10), b = parseInt(maxEl.value, 10);
+    if (a > b) { [a, b] = [b, a]; }
+    setRange(prefix, a, b);
+    onChange();
+  };
+  minEl.addEventListener("input", apply);
+  maxEl.addEventListener("input", apply);
+}
+
+async function init() {
+  const text = await fetch(DATA_URL).then((r) => r.text());
+  rows = parseCSV(text);
+  filters = {
+    asset: [], weekday: [], session: [], volume: [], pattern: [],
+    hourMin: 0, hourMax: 23, slMin: 0, slMax: 1,
+  };
+  buildChips("f-asset", "asset", uniq(rows.map((r) => r.asset)));
+  buildChips("f-weekday", "weekday", uniq(rows.map((r) => r.weekday)), WEEKDAY_ORDER);
+  buildChips("f-session", "session", uniq(rows.map((r) => r.session)), SESSION_ORDER);
+  buildChips("f-volume", "volume", uniq(rows.map((r) => r.volume)));
+  buildChips("f-pattern", "pattern", uniq(rows.map((r) => r.pattern)));
+
+  const [slLo, slHi] = extent(rows.map((r) => r.sl_pct));
+  const slMin = Math.floor(slLo * 100);
+  const slMax = Math.ceil(slHi * 100);
+  document.getElementById("sl-min").min = slMin;
+  document.getElementById("sl-min").max = slMax;
+  document.getElementById("sl-min").value = slMin;
+  document.getElementById("sl-max").min = slMin;
+  document.getElementById("sl-max").max = slMax;
+  document.getElementById("sl-max").value = slMax;
+  setRange("hour", 0, 23);
+  setRange("sl", slMin, slMax);
+
+  wireRange("hour", render);
+  wireRange("sl", render);
+  document.getElementById("groupby").addEventListener("change", render);
+  document.getElementById("minn").addEventListener("input", render);
+  document.getElementById("reset").addEventListener("click", reset);
+
+  render();
+}
+
+init().catch((err) => {
+  document.getElementById("cards").innerHTML =
+    `<div class="empty">Could not load the dataset (${err.message}). Serve this page over HTTP; browsers block local file fetches.</div>`;
+});
+</script>
+</body>
+</html>

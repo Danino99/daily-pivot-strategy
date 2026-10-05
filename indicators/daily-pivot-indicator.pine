@@ -1,0 +1,225 @@
+//@version=6
+indicator("Dynamic Daily Pivot Lines with Supertrend and ATR Stop Loss", overlay=true, max_lines_count=500)
+
+// Entradas
+session_input = input.session("0930-1600", "Rango de Sesión Válido")
+max_line_age = input.int(title="Máxima antigüedad de líneas (días)", defval=30, minval=1)
+
+// Rango de fechas (se ajusta a mano en cada revisión)
+start_date = input.time(title="Fecha de inicio", defval=timestamp("2022-01-01 00:00:00"))
+end_date   = input.time(title="Fecha de fin",    defval=timestamp("2022-12-31 23:59:59"))
+
+// Limita el indicador al rango de fechas
+is_in_date_range = time >= start_date and time <= end_date
+
+// Supertrend
+atrPeriod = input.int(10, "ATR Length", minval=1)
+factor    = input.float(3.0, "Factor", minval=0.01, step=0.01)
+
+// Stop loss por ATR
+atr_sl_length     = input.int(13, title="ATR Length for Stop Loss", minval=1)
+atr_sl_multiplier = input.float(2.0, title="ATR Multiplier for Stop Loss")
+
+// Estado de los pivotes y sus líneas
+var line[] high_lines       = array.new_line(0)
+var line[] low_lines        = array.new_line(0)
+var int[] high_lines_times  = array.new_int(0)
+var int[] low_lines_times   = array.new_int(0)
+var float prev_day_high     = na
+var float prev_day_low      = na
+var int prev_day_high_time  = na
+var int prev_day_low_time   = na
+var float day_high          = na
+var float day_low           = na
+var int day_high_time       = na
+var int day_low_time        = na
+
+// Diferencia en días entre dos timestamps
+days_between(time1, time2) =>
+    int(math.abs(time1 - time2) / 86400000)  // 86400000 ms en un día
+
+// Cambio de día
+is_new_day = ta.change(time('D')) != 0
+
+// Barra dentro de la sesión válida
+is_in_session = not na(time(timeframe.period, session_input))
+
+// Señales de sweep (barrido de la liquidez previa)
+var bool sweep_high_signal = false
+var bool sweep_low_signal  = false
+
+// Ruptura inmediata del pivote, sin esperar el cierre de vuelta
+var bool pivot_break_high = false
+var bool pivot_break_low  = false
+
+// Niveles de stop para las señales
+var float stop_loss_level_high = na
+var float stop_loss_level_low  = na
+
+// ATR usado para el stop
+atr_sl_value  = ta.sma(ta.tr(true), atr_sl_length)
+atr_sl_offset = atr_sl_value[1]
+
+// Máximos y mínimos del día
+if is_in_date_range
+    if is_new_day
+        // Al cambiar de día, fija el máximo/mínimo previo y dibuja sus líneas
+        if not na(day_high)
+            prev_day_high      := day_high
+            prev_day_low       := day_low
+            prev_day_high_time := day_high_time
+            prev_day_low_time  := day_low_time
+
+            // Líneas desde el momento en que ocurrieron
+            high_line = line.new(x1=prev_day_high_time, y1=prev_day_high, x2=time, y2=prev_day_high, xloc=xloc.bar_time, extend=extend.right, color=color.red, width=1)
+            low_line  = line.new(x1=prev_day_low_time,  y1=prev_day_low,  x2=time, y2=prev_day_low,  xloc=xloc.bar_time, extend=extend.right, color=color.green, width=1)
+
+            // Guarda las líneas para seguimiento
+            array.push(high_lines, high_line)
+            array.push(low_lines, low_line)
+            array.push(high_lines_times, prev_day_high_time)
+            array.push(low_lines_times, prev_day_low_time)
+
+        // Reinicia el máximo/mínimo del nuevo día
+        day_high      := high
+        day_low       := low
+        day_high_time := time
+        day_low_time  := time
+    else
+        // Actualiza el máximo/mínimo del día
+        if high > day_high or na(day_high)
+            day_high      := high
+            day_high_time := time
+        if low < day_low or na(day_low)
+            day_low      := low
+            day_low_time := time
+
+    // Busca toques de las líneas de pivote
+    // Pivotes altos
+    i_high = array.size(high_lines) - 1
+    while i_high >= 0
+        h_line = array.get(high_lines, i_high)
+        h_time = array.get(high_lines_times, i_high)
+        p_high = line.get_y1(h_line)
+        if not na(h_line) and not na(p_high)
+            // Ruptura inmediata al tocar o superar el pivote
+            if high >= p_high
+                pivot_break_high := true
+
+                // Sweep: rompe el pivote y cierra de vuelta por debajo
+                if close < p_high
+                    if is_in_session
+                        sweep_high_signal := true
+                        // Stop para la venta
+                        stop_loss_level_high := close + (atr_sl_offset * atr_sl_multiplier)
+
+                // Cierra y elimina la línea
+                line.set_x2(h_line, time)
+                line.set_extend(h_line, extend.none)
+                array.remove(high_lines, i_high)
+                array.remove(high_lines_times, i_high)
+            else if days_between(time, h_time) > max_line_age
+                // Descarta líneas viejas
+                line.delete(h_line)
+                array.remove(high_lines, i_high)
+                array.remove(high_lines_times, i_high)
+        i_high -= 1
+
+    // Pivotes bajos
+    i_low = array.size(low_lines) - 1
+    while i_low >= 0
+        l_line = array.get(low_lines, i_low)
+        l_time = array.get(low_lines_times, i_low)
+        p_low = line.get_y1(l_line)
+        if not na(l_line) and not na(p_low)
+            // Ruptura inmediata al tocar o superar el pivote
+            if low <= p_low
+                pivot_break_low := true
+
+                // Sweep: rompe el pivote y cierra de vuelta por encima
+                if close > p_low
+                    if is_in_session
+                        sweep_low_signal := true
+                        // Stop para la compra
+                        stop_loss_level_low := close - (atr_sl_offset * atr_sl_multiplier)
+
+                // Cierra y elimina la línea
+                line.set_x2(l_line, time)
+                line.set_extend(l_line, extend.none)
+                array.remove(low_lines, i_low)
+                array.remove(low_lines_times, i_low)
+            else if days_between(time, l_time) > max_line_age
+                // Descarta líneas viejas
+                line.delete(l_line)
+                array.remove(low_lines, i_low)
+                array.remove(low_lines_times, i_low)
+        i_low -= 1
+else
+    // Fuera del rango de fechas, borra las líneas existentes
+    if array.size(high_lines) > 0
+        for i = 0 to array.size(high_lines) - 1
+            line.delete(array.get(high_lines, i))
+        array.clear(high_lines)
+        array.clear(high_lines_times)
+    if array.size(low_lines) > 0
+        for i = 0 to array.size(low_lines) - 1
+            line.delete(array.get(low_lines, i))
+        array.clear(low_lines)
+        array.clear(low_lines_times)
+    // Reinicia el estado
+    day_high := na
+    day_low := na
+    prev_day_high := na
+    prev_day_low := na
+    day_high_time := na
+    day_low_time := na
+    prev_day_high_time := na
+    prev_day_low_time := na
+
+// Supertrend
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+supertrend := barstate.isfirst ? na : supertrend
+
+// Oculta el Supertrend fuera del rango de fechas
+plot_supertrend_up   = is_in_date_range and direction > 0 ? supertrend : na
+plot_supertrend_down = is_in_date_range and direction < 0 ? supertrend : na
+plot_body_middle     = is_in_date_range ? (open + close) / 2 : na
+
+// Supertrend
+upTrend    = plot(plot_supertrend_up, "Tendencia Alcista", color=color.green, style=plot.style_linebr)
+downTrend  = plot(plot_supertrend_down, "Tendencia Bajista", color=color.red, style=plot.style_linebr)
+bodyMiddle = plot(plot_body_middle, "Cuerpo Medio", display=display.none)
+
+// Relleno según la tendencia
+fill(bodyMiddle, upTrend,   color.new(color.green, 90), fillgaps=false)
+fill(bodyMiddle, downTrend, color.new(color.red,   90), fillgaps=false)
+
+// Etiqueta con el stop en cada señal
+if sweep_high_signal
+    label.new(bar_index, high, text="SL: " + str.tostring(stop_loss_level_high, format.mintick), style=label.style_label_down, color=color.red, textcolor=color.white)
+if sweep_low_signal
+    label.new(bar_index, low, text="SL: " + str.tostring(stop_loss_level_low, format.mintick), style=label.style_label_up, color=color.green, textcolor=color.white)
+
+// Alertas de ruptura inmediata
+alertcondition( pivot_break_high and is_in_date_range, title   = "Ruptura Pivot Alto (Inmediata)", message = 'Precio ha tocado/superado pivot alto en {{ticker}} (Close={{close}})')
+
+alertcondition(pivot_break_low and is_in_date_range,title   = "Ruptura Pivot Bajo (Inmediata)",message = 'Precio ha tocado/superado pivot bajo en {{ticker}} (Close={{close}})')
+
+// Alertas de señal (sweep)
+alertcondition(sweep_high_signal and is_in_date_range,title="Señal de Venta (Sweep High)",message='{ "symbol": "{{ticker}}", "action": "sell", "price": "{{close}}", "time": "{{time}}", "stop_loss": "{{stop_loss_level_high}}" }')
+alertcondition(sweep_low_signal and is_in_date_range,title="Señal de Compra (Sweep Low)",message='{ "symbol": "{{ticker}}", "action": "buy", "price": "{{close}}", "time": "{{time}}", "stop_loss": "{{stop_loss_level_low}}" }')
+
+// Alertas del Supertrend
+alertcondition(is_in_date_range and direction[1] < direction,title='Cambio a Tendencia Alcista',message='El Supertrend cambió de Bajista a Alcista en {{ticker}} al precio {{close}}')
+alertcondition(is_in_date_range and direction[1] > direction,title='Cambio a Tendencia Bajista',message='El Supertrend cambió de Alcista a Bajista en {{ticker}} al precio {{close}}')
+
+// Limpia las señales después de graficarlas
+if sweep_high_signal or sweep_low_signal
+    sweep_high_signal := false
+    sweep_low_signal  := false
+
+// Limpia las señales de ruptura
+if pivot_break_high
+    pivot_break_high := false
+if pivot_break_low
+    pivot_break_low := false

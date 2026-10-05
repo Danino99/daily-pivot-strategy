@@ -1,0 +1,163 @@
+//@version=6
+strategy("Dynamic Daily Pivot STRATEGY", overlay=true, max_lines_count=500, initial_capital=10000, margin_long=1, margin_short=1)
+
+// Entradas
+session_input = input.session("0930-1600", "Rango de Sesión Válido (Entradas)")
+max_line_age = input.int(title="Máxima antigüedad de líneas (días)", defval=30, minval=1)
+
+// Gestión de riesgo
+risk_percent = input.float(1.0, title="Riesgo por Operación (% de la cuenta)", step=0.1, group="Gestión de Riesgo Estrategia")
+rr_multiplier = input.float(2.0, title="Take Profit R:R Multiplier", step=0.1, group="Gestión de Riesgo Estrategia")
+
+// Rango de fechas
+start_date = input.time(title="Fecha de inicio", defval=timestamp("2022-01-01 00:00:00"), group="Filtro de Fechas")
+end_date   = input.time(title="Fecha de fin",    defval=timestamp("2022-12-31 23:59:59"), group="Filtro de Fechas")
+is_in_date_range = time >= start_date and time <= end_date
+
+// Filtro de tendencia (Supertrend)
+use_st_filter = input.bool(true, title="Requerir Confirmación de Supertrend", group="Filtro de Tendencia (Supertrend)")
+atrPeriod = input.int(10, "ATR Length", minval=1, group="Filtro de Tendencia (Supertrend)")
+factor    = input.float(3.0, "Factor", minval=0.01, step=0.01, group="Filtro de Tendencia (Supertrend)")
+
+// Stop loss por ATR
+atr_sl_length     = input.int(13, title="ATR Length for Stop Loss", minval=1, group="Stop Loss (ATR)")
+atr_sl_multiplier = input.float(2.0, title="ATR Multiplier for Stop Loss", step=0.1, group="Stop Loss (ATR)")
+
+// Lógica de pivotes
+var line[] high_lines       = array.new_line(0)
+var line[] low_lines        = array.new_line(0)
+var int[] high_lines_times  = array.new_int(0)
+var int[] low_lines_times   = array.new_int(0)
+var float prev_day_high     = na
+var float prev_day_low      = na
+var int prev_day_high_time  = na
+var int prev_day_low_time   = na
+var float day_high          = na
+var float day_low           = na
+var int day_high_time       = na
+var int day_low_time        = na
+
+days_between(time1, time2) => int(math.abs(time1 - time2) / 86400000)
+
+is_new_day = ta.change(time('D')) != 0
+is_in_session = not na(time(timeframe.period, session_input))
+
+var bool sweep_high_signal = false
+var bool sweep_low_signal  = false
+
+var float stop_loss_level_high = na
+var float stop_loss_level_low  = na
+
+atr_sl_value  = ta.sma(ta.tr(true), atr_sl_length)
+atr_sl_offset = atr_sl_value[1]
+
+// Supertrend
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+is_uptrend = direction < 0
+is_downtrend = direction > 0
+
+if is_in_date_range
+    if is_new_day
+        if not na(day_high)
+            prev_day_high      := day_high
+            prev_day_low       := day_low
+            prev_day_high_time := day_high_time
+            prev_day_low_time  := day_low_time
+
+            high_line = line.new(x1=prev_day_high_time, y1=prev_day_high, x2=time, y2=prev_day_high, xloc=xloc.bar_time, extend=extend.right, color=color.new(color.red, 50), width=1)
+            low_line  = line.new(x1=prev_day_low_time,  y1=prev_day_low,  x2=time, y2=prev_day_low,  xloc=xloc.bar_time, extend=extend.right, color=color.new(color.green, 50), width=1)
+
+            array.push(high_lines, high_line)
+            array.push(low_lines, low_line)
+            array.push(high_lines_times, prev_day_high_time)
+            array.push(low_lines_times, prev_day_low_time)
+
+        day_high      := high
+        day_low       := low
+        day_high_time := time
+        day_low_time  := time
+    else
+        if high > day_high or na(day_high)
+            day_high      := high
+            day_high_time := time
+        if low < day_low or na(day_low)
+            day_low      := low
+            day_low_time := time
+
+    // Pivotes altos
+    i_high = array.size(high_lines) - 1
+    while i_high >= 0
+        h_line = array.get(high_lines, i_high)
+        h_time = array.get(high_lines_times, i_high)
+        p_high = line.get_y1(h_line)
+        if not na(h_line) and not na(p_high)
+            if high >= p_high
+                if close < p_high and is_in_session
+                    sweep_high_signal := true
+                    stop_loss_level_high := close + (atr_sl_offset * atr_sl_multiplier)
+
+                line.set_x2(h_line, time)
+                line.set_extend(h_line, extend.none)
+                array.remove(high_lines, i_high)
+                array.remove(high_lines_times, i_high)
+            else if days_between(time, h_time) > max_line_age
+                line.delete(h_line)
+                array.remove(high_lines, i_high)
+                array.remove(high_lines_times, i_high)
+        i_high -= 1
+
+    // Pivotes bajos
+    i_low = array.size(low_lines) - 1
+    while i_low >= 0
+        l_line = array.get(low_lines, i_low)
+        l_time = array.get(low_lines_times, i_low)
+        p_low = line.get_y1(l_line)
+        if not na(l_line) and not na(p_low)
+            if low <= p_low
+                if close > p_low and is_in_session
+                    sweep_low_signal := true
+                    stop_loss_level_low := close - (atr_sl_offset * atr_sl_multiplier)
+
+                line.set_x2(l_line, time)
+                line.set_extend(l_line, extend.none)
+                array.remove(low_lines, i_low)
+                array.remove(low_lines_times, i_low)
+            else if days_between(time, l_time) > max_line_age
+                line.delete(l_line)
+                array.remove(low_lines, i_low)
+                array.remove(low_lines_times, i_low)
+        i_low -= 1
+
+// Ejecución
+
+in_position = strategy.position_size != 0
+
+// Monto a arriesgar según el % de la cuenta
+risk_amount_usd = (strategy.equity * risk_percent) / 100
+
+// Setup de venta
+if sweep_high_signal and not in_position and is_in_date_range
+    if not use_st_filter or is_downtrend
+        risk_dist_short = stop_loss_level_high - close
+        qty_short = risk_dist_short > 0 ? (risk_amount_usd / math.abs(risk_dist_short)) : 0
+
+        if qty_short > 0
+            strategy.entry("Venta", strategy.short, qty=qty_short)
+            tp_short = close - (risk_dist_short * rr_multiplier)
+            strategy.exit("Cierre Venta", "Venta", stop=stop_loss_level_high, limit=tp_short)
+
+// Setup de compra
+if sweep_low_signal and not in_position and is_in_date_range
+    if not use_st_filter or is_uptrend
+        risk_dist_long = close - stop_loss_level_low
+        qty_long = risk_dist_long > 0 ? (risk_amount_usd / math.abs(risk_dist_long)) : 0
+
+        if qty_long > 0
+            strategy.entry("Compra", strategy.long, qty=qty_long)
+            tp_long = close + (risk_dist_long * rr_multiplier)
+            strategy.exit("Cierre Compra", "Compra", stop=stop_loss_level_low, limit=tp_long)
+
+// Limpia las señales después de usarlas
+if sweep_high_signal or sweep_low_signal
+    sweep_high_signal := false
+    sweep_low_signal  := false
